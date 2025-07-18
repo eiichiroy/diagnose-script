@@ -59,26 +59,32 @@ check_v4l2() {
     log "${GREEN}v4l2-ctl is installed.${NC}"
 }
 
-# Define simple arrays for commands and descriptions
-# Format: description followed by command
-DESC_VIDEO="Video devices"; CMD_VIDEO="ls -la /dev/video*"
-DESC_INFO="Device info"; CMD_INFO="v4l2-ctl --device $CAMERA_DEVICE --all"
-DESC_USB="USB topology"; CMD_USB="lsusb -t"
-DESC_FORMATS="Available formats"; CMD_FORMATS="v4l2-ctl -d $CAMERA_DEVICE --list-formats-ext"
-DESC_V4L_1="v4l2 info (1)"; CMD_V4L_1="v4l2-ctl -info"
-DESC_V4L_2="v4l2 info (2)"; CMD_V4L_2="v4l2-ctl --info"
+# Define array of diagnostic commands
+# Each element is an array with [description, command]
+declare -a DIAGNOSTIC_COMMANDS=(
+    ["Video devices"]="ls -la /dev/video*"
+    ["Device info"]="v4l2-ctl --device $CAMERA_DEVICE --all"
+    ["USB topology"]="lsusb -t"
+    ["Available formats"]="v4l2-ctl -d $CAMERA_DEVICE --list-formats-ext"
+    ["v4l2 info (1)"]="v4l2-ctl -info"
+    ["v4l2 info (2)"]="v4l2-ctl --info"
+)
 
-# System log commands
-DESC_DMESG="Kernel messages"; CMD_DMESG="dmesg | grep -i -E 'camera|video|v4l|uvc|usb.*cam' | tail -n 50"
-DESC_MODULES="Loaded modules"; CMD_MODULES="lsmod | grep -i -E 'video|camera|uvc|v4l'"
-DESC_PERMS="Camera permissions"; CMD_PERMS="ls -la /dev/video*"
-DESC_HW="Hardware info"; CMD_HW="cat /proc/cpuinfo | grep Model"
-DESC_OS="OS release"; CMD_OS="cat /etc/os-release"
+# Define array of system log commands
+declare -a SYSTEM_LOG_COMMANDS=(
+    ["Kernel messages"]="dmesg | grep -i -E 'camera|video|v4l|uvc|usb.*cam' | tail -n 50"
+    ["Loaded modules"]="lsmod | grep -i -E 'video|camera|uvc|v4l'"
+    ["Camera permissions"]="ls -la /dev/video*"
+    ["Hardware info"]="cat /proc/cpuinfo | grep Model"
+    ["OS release"]="cat /etc/os-release"
+)
 
-# Conditional commands
-DESC_JOURNAL="Systemd journal entries"; CMD_JOURNAL="journalctl -b | grep -i -E 'camera|video|v4l|uvc|usb.*cam' | tail -n 50"
-DESC_KERNEL="Kernel config"; CMD_KERNEL="grep -i 'V4L\|CAMERA\|UVC' /boot/config-$(uname -r)"
-DESC_CONFIG="Pi camera settings"; CMD_CONFIG="grep -i 'camera\|start_x' /boot/config.txt"
+# Conditional commands - only run if the files/tools exist
+declare -a CONDITIONAL_COMMANDS=(
+    ["systemd journal:journalctl"]="journalctl -b | grep -i -E 'camera|video|v4l|uvc|usb.*cam' | tail -n 50"
+    ["/boot/config:kernel config"]="grep -i 'V4L\|CAMERA\|UVC' /boot/config-$(uname -r)"
+    ["/boot/config.txt:Pi camera settings"]="grep -i 'camera\|start_x' /boot/config.txt"
+)
 
 # Main script execution
 log "${BOLD}Starting Camera Diagnostic at $(date)${NC}"
@@ -89,29 +95,10 @@ check_v4l2
 
 # Run all diagnostic commands
 log "\n${BOLD}${YELLOW}Running Basic Camera Diagnostics${NC}"
-
-# Video devices
-log "\n${YELLOW}Checking $DESC_VIDEO...${NC}"
-log_cmd "$CMD_VIDEO"
-
-# Device info
-log "\n${YELLOW}Checking $DESC_INFO...${NC}"
-log_cmd "$CMD_INFO"
-
-# USB topology
-log "\n${YELLOW}Checking $DESC_USB...${NC}"
-log_cmd "$CMD_USB"
-
-# Available formats
-log "\n${YELLOW}Checking $DESC_FORMATS...${NC}"
-log_cmd "$CMD_FORMATS"
-
-# v4l2 info commands
-log "\n${YELLOW}Checking $DESC_V4L_1...${NC}"
-log_cmd "$CMD_V4L_1"
-
-log "\n${YELLOW}Checking $DESC_V4L_2...${NC}"
-log_cmd "$CMD_V4L_2"
+for desc in "${!DIAGNOSTIC_COMMANDS[@]}"; do
+    log "\n${YELLOW}Checking $desc...${NC}"
+    log_cmd "${DIAGNOSTIC_COMMANDS[$desc]}"
+done
 
 # Capture HD image - direct execution without going through log_cmd
 log "\n${BOLD}${YELLOW}Capturing HD Image${NC}"
@@ -132,51 +119,45 @@ else
     log "${RED}❌ Failed to capture HD image${NC}"
 fi
 
-# Run system log commands
+# Run all system log commands
 log "\n${BOLD}${YELLOW}Collecting System Logs${NC}"
+for desc in "${!SYSTEM_LOG_COMMANDS[@]}"; do
+    log "\n${YELLOW}Getting $desc...${NC}"
+    log_cmd "${SYSTEM_LOG_COMMANDS[$desc]}"
+done
 
-# Kernel messages
-log "\n${YELLOW}Getting $DESC_DMESG...${NC}"
-log_cmd "$CMD_DMESG"
-
-# Loaded modules
-log "\n${YELLOW}Getting $DESC_MODULES...${NC}"
-log_cmd "$CMD_MODULES"
-
-# Camera permissions
-log "\n${YELLOW}Getting $DESC_PERMS...${NC}"
-log_cmd "$CMD_PERMS"
-
-# Hardware info
-log "\n${YELLOW}Getting $DESC_HW...${NC}"
-log_cmd "$CMD_HW"
-
-# OS release
-log "\n${YELLOW}Getting $DESC_OS...${NC}"
-log_cmd "$CMD_OS"
-
-# Run conditional commands
+# Run conditional commands - check if prerequisite is met first
 log "\n${BOLD}${YELLOW}Running Conditional Diagnostics${NC}"
-
-# Check for journalctl
-if command -v journalctl &> /dev/null; then
-    log "\n${YELLOW}Checking $DESC_JOURNAL...${NC}"
-    log_cmd "$CMD_JOURNAL"
-fi
-
-# Check for kernel config
-if [ -f "/boot/config-$(uname -r)" ]; then
-    log "\n${YELLOW}Checking $DESC_KERNEL...${NC}"
-    log_cmd "$CMD_KERNEL"
-fi
-
-# Check for Pi config
-if [ -f "/boot/config.txt" ]; then
-    log "\n${YELLOW}Checking $DESC_CONFIG...${NC}"
-    log_cmd "$CMD_CONFIG"
-fi
+for entry in "${!CONDITIONAL_COMMANDS[@]}"; do
+    # Split the key into prerequisite and description
+    IFS=':' read -r prereq desc <<< "$entry"
+    
+    # Check if prerequisite is met
+    case "$prereq" in
+        "systemd journal")
+            if command -v journalctl &> /dev/null; then
+                log "\n${YELLOW}Checking $desc...${NC}"
+                log_cmd "${CONDITIONAL_COMMANDS[$entry]}"
+            fi
+            ;;
+        "/boot/config")
+            if [ -f "/boot/config-$(uname -r)" ]; then
+                log "\n${YELLOW}Checking $desc...${NC}"
+                log_cmd "${CONDITIONAL_COMMANDS[$entry]}"
+            fi
+            ;;
+        "/boot/config.txt")
+            if [ -f "/boot/config.txt" ]; then
+                log "\n${YELLOW}Checking $desc...${NC}"
+                log_cmd "${CONDITIONAL_COMMANDS[$entry]}"
+            fi
+            ;;
+    esac
+done
 
 # Complete
 log "\n${GREEN}Camera Diagnostic completed at $(date)${NC}"
 log "Log files saved to: $LOG_DIR"
 log "Snapshot (if successful) saved to: $SNAP_DIR"
+
+chmod +x "$0"  # Make sure the script is executable
