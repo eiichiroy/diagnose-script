@@ -93,23 +93,16 @@ log "Logs will be saved to: $LOG_DIR"
 # Check for required tools
 check_v4l2
 
-# Run all diagnostic commands
-log "\n${BOLD}${YELLOW}Running Basic Camera Diagnostics${NC}"
-for desc in "${!DIAGNOSTIC_COMMANDS[@]}"; do
-    log "\n${YELLOW}Checking $desc...${NC}"
-    log_cmd "${DIAGNOSTIC_COMMANDS[$desc]}"
-done
-
-# Capture HD image - direct execution without going through log_cmd
-log "\n${BOLD}${YELLOW}Capturing HD Image${NC}"
+# Capture HD image
+log "\n${YELLOW}Capturing HD image with v4l2-ctl...${NC}"
 SNAP_FILE="$SNAP_DIR/snap_$TIMESTAMP.jpg"
 
-# Execute the capture command directly
-log "${BOLD}${BLUE}EXECUTING: v4l2-ctl --device $CAMERA_DEVICE --set-fmt-video=width=1920,height=1080,pixelformat=MJPG --stream-mmap --stream-to=$SNAP_FILE --stream-count=1${NC}"
+# Execute the capture command directly instead of using log_cmd function
+log "${BOLD}${BLUE}EXECUTING: v4l2-ctl --device /dev/video0 --set-fmt-video=width=1920,height=1080,pixelformat=MJPG --stream-mmap --stream-to=$SNAP_FILE --stream-count=1${NC}"
 echo "\n=========================================================\nCOMMAND: v4l2-ctl capture\n=========================================================" >> "$OUTPUT_LOG"
 
-# Direct execution without eval or pipes for image capture
-v4l2-ctl --device $CAMERA_DEVICE --set-fmt-video=width=1920,height=1080,pixelformat=MJPG --stream-mmap --stream-to="$SNAP_FILE" --stream-count=1 2>&1 | tee -a "$OUTPUT_LOG"
+# Direct execution without eval or pipes
+v4l2-ctl --device /dev/video0 --set-fmt-video=width=1920,height=1080,pixelformat=MJPG --stream-mmap --stream-to="$SNAP_FILE" --stream-count=1 2>&1 | tee -a "$OUTPUT_LOG"
 
 # Check if capture was successful
 if [ -f "$SNAP_FILE" ]; then
@@ -119,41 +112,43 @@ else
     log "${RED}❌ Failed to capture HD image${NC}"
 fi
 
-# Run all system log commands
-log "\n${BOLD}${YELLOW}Collecting System Logs${NC}"
-for desc in "${!SYSTEM_LOG_COMMANDS[@]}"; do
-    log "\n${YELLOW}Getting $desc...${NC}"
-    log_cmd "${SYSTEM_LOG_COMMANDS[$desc]}"
-done
+# Collect system logs related to camera/video
+log "\n${YELLOW}Collecting system logs related to camera and video...${NC}"
 
-# Run conditional commands - check if prerequisite is met first
-log "\n${BOLD}${YELLOW}Running Conditional Diagnostics${NC}"
-for entry in "${!CONDITIONAL_COMMANDS[@]}"; do
-    # Split the key into prerequisite and description
-    IFS=':' read -r prereq desc <<< "$entry"
-    
-    # Check if prerequisite is met
-    case "$prereq" in
-        "systemd journal")
-            if command -v journalctl &> /dev/null; then
-                log "\n${YELLOW}Checking $desc...${NC}"
-                log_cmd "${CONDITIONAL_COMMANDS[$entry]}"
-            fi
-            ;;
-        "/boot/config")
-            if [ -f "/boot/config-$(uname -r)" ]; then
-                log "\n${YELLOW}Checking $desc...${NC}"
-                log_cmd "${CONDITIONAL_COMMANDS[$entry]}"
-            fi
-            ;;
-        "/boot/config.txt")
-            if [ -f "/boot/config.txt" ]; then
-                log "\n${YELLOW}Checking $desc...${NC}"
-                log_cmd "${CONDITIONAL_COMMANDS[$entry]}"
-            fi
-            ;;
-    esac
-done
+# Kernel messages related to camera/video
+log "\n${YELLOW}Recent kernel messages related to camera/video...${NC}"
+log_cmd "dmesg | grep -i -E 'camera|video|v4l|uvc|usb.*cam' | tail -n 50"
+
+# Journal logs related to camera
+if command -v journalctl &> /dev/null; then
+    log "\n${YELLOW}Recent systemd journal entries related to camera...${NC}"
+    log_cmd "journalctl -b | grep -i -E 'camera|video|v4l|uvc|usb.*cam' | tail -n 50"
+fi
+
+# Check loaded modules related to camera
+log "\n${YELLOW}Loaded kernel modules related to camera...${NC}"
+log_cmd "lsmod | grep -i -E 'video|camera|uvc|v4l'"
+
+# Check camera device permissions
+log "\n${YELLOW}Camera device permissions...${NC}"
+log_cmd "ls -la /dev/video*"
+
+# Check kernel config for camera support
+if [ -f "/boot/config-$(uname -r)" ]; then
+    log "\n${YELLOW}Kernel config related to camera support...${NC}"
+    log_cmd "grep -i 'V4L\|CAMERA\|UVC' /boot/config-$(uname -r)"
+fi
+
+# Hardware information
+log "\n${YELLOW}Hardware information...${NC}"
+log_cmd "cat /proc/cpuinfo | grep Model"
+log_cmd "cat /etc/os-release"
+
+# Pi specific: Check if camera is enabled in config.txt
+if [ -f "/boot/config.txt" ]; then
+    log "\n${YELLOW}Checking Raspberry Pi camera settings...${NC}"
+    log_cmd "grep -i 'camera\|start_x' /boot/config.txt"
+fi
 
 # Complete
 log "\n${GREEN}Camera Diagnostic completed at $(date)${NC}"
