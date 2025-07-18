@@ -121,13 +121,6 @@ else
     log "${RED}❌ Failed to capture HD image${NC}"
 fi
 
-# Test video streaming performance
-log "\n${YELLOW}Testing video streaming performance...${NC}"
-log "${BOLD}${BLUE}EXECUTING: v4l2-ctl --device=/dev/video0 --stream-mmap --stream-count=100 --stream-to=/dev/null --verbose${NC}"
-echo "\n=========================================================\nCOMMAND: v4l2-ctl streaming test\n=========================================================" >> "$OUTPUT_LOG"
-# Only test briefly with 10 frames instead of 100 to avoid long wait
-v4l2-ctl --device=/dev/video0 --stream-mmap --stream-count=10 --stream-to=/dev/null --verbose 2>&1 | tee -a "$OUTPUT_LOG"
-
 # Collect system logs related to camera/video
 log "\n${YELLOW}Collecting system logs related to camera and video...${NC}"
 
