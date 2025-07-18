@@ -21,9 +21,6 @@ mkdir -p "$LOG_DIR" "$SNAP_DIR"
 MAIN_LOG="$LOG_DIR/camera_diagnostic_$TIMESTAMP.log"
 OUTPUT_LOG="$LOG_DIR/output_$TIMESTAMP.log"
 
-# Define camera device
-CAMERA_DEVICE="/dev/video0"
-
 # Log both to file and stdout
 log() {
     echo -e "$1" | tee -a "$MAIN_LOG"
@@ -32,7 +29,7 @@ log() {
 # Log command execution
 log_cmd() {
     local cmd="$1"
-    local separator="=====================================================" 
+    local separator="====================================================="
     
     # Log command execution
     log "\n$separator"
@@ -59,39 +56,33 @@ check_v4l2() {
     log "${GREEN}v4l2-ctl is installed.${NC}"
 }
 
-# Define array of diagnostic commands
-# Each element is an array with [description, command]
-declare -a DIAGNOSTIC_COMMANDS=(
-    ["Video devices"]="ls -la /dev/video*"
-    ["Device info"]="v4l2-ctl --device $CAMERA_DEVICE --all"
-    ["USB topology"]="lsusb -t"
-    ["Available formats"]="v4l2-ctl -d $CAMERA_DEVICE --list-formats-ext"
-    ["v4l2 info (1)"]="v4l2-ctl -info"
-    ["v4l2 info (2)"]="v4l2-ctl --info"
-)
-
-# Define array of system log commands
-declare -a SYSTEM_LOG_COMMANDS=(
-    ["Kernel messages"]="dmesg | grep -i -E 'camera|video|v4l|uvc|usb.*cam' | tail -n 50"
-    ["Loaded modules"]="lsmod | grep -i -E 'video|camera|uvc|v4l'"
-    ["Camera permissions"]="ls -la /dev/video*"
-    ["Hardware info"]="cat /proc/cpuinfo | grep Model"
-    ["OS release"]="cat /etc/os-release"
-)
-
-# Conditional commands - only run if the files/tools exist
-declare -a CONDITIONAL_COMMANDS=(
-    ["systemd journal:journalctl"]="journalctl -b | grep -i -E 'camera|video|v4l|uvc|usb.*cam' | tail -n 50"
-    ["/boot/config:kernel config"]="grep -i 'V4L\|CAMERA\|UVC' /boot/config-$(uname -r)"
-    ["/boot/config.txt:Pi camera settings"]="grep -i 'camera\|start_x' /boot/config.txt"
-)
-
 # Main script execution
 log "${BOLD}Starting Camera Diagnostic at $(date)${NC}"
 log "Logs will be saved to: $LOG_DIR"
 
 # Check for required tools
 check_v4l2
+
+# List video devices
+log "\n${YELLOW}Checking for video devices...${NC}"
+log_cmd "ls -la /dev/video*"
+
+# Get device info
+log "\n${YELLOW}Getting v4l2 device info...${NC}"
+log_cmd "v4l2-ctl --device /dev/video0 --all"
+
+# Check USB tree
+log "\n${YELLOW}Checking USB topology...${NC}"
+log_cmd "lsusb -t"
+
+# List available formats
+log "\n${YELLOW}Listing available formats...${NC}"
+log_cmd "v4l2-ctl -d /dev/video0 --list-formats-ext"
+
+# Get v4l2 info
+log "\n${YELLOW}Getting v4l2 info...${NC}"
+log_cmd "v4l2-ctl -info"
+log_cmd "v4l2-ctl --info"
 
 # Capture HD image
 log "\n${YELLOW}Capturing HD image with v4l2-ctl...${NC}"
@@ -154,5 +145,3 @@ fi
 log "\n${GREEN}Camera Diagnostic completed at $(date)${NC}"
 log "Log files saved to: $LOG_DIR"
 log "Snapshot (if successful) saved to: $SNAP_DIR"
-
-chmod +x "$0"  # Make sure the script is executable
